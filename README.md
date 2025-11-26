@@ -16,6 +16,30 @@ This MCP has read and write access (if you allow it). Please. PLEASE backup your
 - Move and delete notes
 - Manage tags (add, remove, rename)
 - Search vault contents
+- HTTP server support via streamable-http transport
+
+## Transport Options
+
+### Stdio (Default)
+The default transport for use with Claude Desktop and other MCP clients.
+
+```json
+{
+    "mcpServers": {
+        "obsidian": {
+            "command": "npx",
+            "args": ["-y", "obsidian-mcp", "/path/to/your/vault"]
+        }
+    }
+}
+```
+
+### HTTP Server
+For web-based integrations, add the `--http` flag. See [HTTP-SERVER.md](HTTP-SERVER.md) for details.
+
+```bash
+node build/main.js --http /path/to/your/vault
+```
 
 ## Requirements
 
