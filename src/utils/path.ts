@@ -424,14 +424,14 @@ export function safeJoinPath(vaultPath: string, ...segments: string[]): string {
 
 /**
  * Sanitizes a vault name to be filesystem-safe
+ * Preserves Unicode characters (including Korean, Japanese, Chinese, etc.)
  * @param name - The raw vault name
  * @returns The sanitized vault name
  */
 export function sanitizeVaultName(name: string): string {
   return name
-    .toLowerCase()
-    // Replace spaces and special characters with hyphens
-    .replace(/[^a-z0-9]+/g, '-')
+    // Replace problematic filesystem characters with hyphens (keep Unicode letters/numbers)
+    .replace(/[\s<>:"/\\|?*\x00-\x1f]+/g, '-')
     // Remove leading/trailing hyphens
     .replace(/^-+|-+$/g, '')
     // Ensure name isn't empty
