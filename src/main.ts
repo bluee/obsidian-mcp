@@ -24,6 +24,7 @@ import {
   sanitizeVaultName,
   checkPathOverlap 
 } from "./utils/path.js";
+import express from 'express';
 
 interface VaultConfig {
   name: string;
@@ -34,7 +35,11 @@ async function main() {
   // Constants
   const MAX_VAULTS = 10; // Reasonable limit to prevent resource issues
 
-  const vaultArgs = process.argv.slice(2);
+  // Check for --http flag
+  const args = process.argv.slice(2);
+  const httpMode = args.includes('--http');
+  const vaultArgs = args.filter(arg => arg !== '--http');
+
   if (vaultArgs.length === 0) {
     const helpMessage = `
 Obsidian MCP Server - Multi-vault Support
@@ -503,8 +508,12 @@ Examples:
     console.error("All tools registered successfully");
     console.error("Server starting...\n");
 
-    // Start the server without logging to stdout
-    await server.start();
+    // Start the server based on mode
+    if (httpMode) {
+      await server.startHttp();
+    } else {
+      await server.start();
+    }
   } catch (error) {
     console.log(error instanceof Error ? error.message : String(error));
     // Format error for MCP protocol

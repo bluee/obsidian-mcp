@@ -1,5 +1,7 @@
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import express from 'express';
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
@@ -268,6 +270,42 @@ export class ObsidianServer {
     const transport = new StdioServerTransport();
     await this.server.connect(transport);
     console.error("Obsidian MCP Server running on stdio");
+  }
+
+  async startHttp() {
+    const app = express();
+    app.use(express.json());
+
+    app.post('/mcp', async (req, res) => {
+      try {
+        const transport = new StreamableHTTPServerTransport({
+          sessionIdGenerator: undefined,
+          enableJsonResponse: true
+        });
+
+        res.on('close', () => transport.close());
+        await this.server.connect(transport);
+        await transport.handleRequest(req, res, req.body);
+      } catch (error) {
+        console.error('Error handling MCP request:', error);
+        if (!res.headersSent) {
+          res.status(500).json({
+            jsonrpc: '2.0',
+            error: { code: -32603, message: 'Internal server error' },
+            id: null
+          });
+        }
+      }
+    });
+
+    const host = process.env.HOST || 'localhost';
+    const port = parseInt(process.env.PORT || '3000');
+    app.listen(port, host, () => {
+      console.log(`MCP Server running on http://${host}:${port}/mcp`);
+    }).on('error', error => {
+      console.error('Server error:', error);
+      process.exit(1);
+    });
   }
 
   async stop() {

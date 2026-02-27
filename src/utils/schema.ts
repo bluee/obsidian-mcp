@@ -71,11 +71,11 @@ export function createSchemaHandlerFromJson<T = any>(jsonSchema: {
 /**
  * Creates a tool schema handler that manages both JSON Schema for MCP and Zod validation
  */
-export function createSchemaHandler<T>(schema: z.ZodSchema<T>) {
+export function createSchemaHandler<T>(schema: z.ZodType<T, any, any>) {
   return {
     // Convert to JSON Schema for MCP interface
     jsonSchema: (() => {
-      const fullSchema = zodToJsonSchema(schema) as {
+      const fullSchema = zodToJsonSchema(schema as any) as {
         type: string;
         properties: Record<string, any>;
         required?: string[];
@@ -90,7 +90,7 @@ export function createSchemaHandler<T>(schema: z.ZodSchema<T>) {
     // Validate and parse input
     parse: (input: unknown): T => {
       try {
-        return schema.parse(input);
+        return schema.parse(input) as T;
       } catch (error) {
         if (error instanceof z.ZodError) {
           throw new McpError(
