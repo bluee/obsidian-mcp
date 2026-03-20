@@ -1,8 +1,11 @@
 import { describe, it } from 'bun:test';
 import assert from 'node:assert';
 import path from 'path';
+import os from 'os';
 import { normalizePath } from './path';
 import { McpError, ErrorCode } from "@modelcontextprotocol/sdk/types.js";
+
+const isWindows = os.platform() === 'win32';
 
 describe('normalizePath', () => {
   describe('Common tests', () => {
@@ -66,15 +69,27 @@ describe('normalizePath', () => {
 
   describe('macOS/Unix-specific tests', () => {
     it('should handle absolute paths', () => {
-      assert.strictEqual(normalizePath('/path/to/file'), path.resolve('/path/to/file'));
+      if (isWindows) {
+        // On Windows, /path/to/file resolves to current drive root (e.g. D:\path\to\file)
+        // but normalizePath returns '/path/to/file' as-is since it's not a Windows drive path
+        assert.strictEqual(normalizePath('/path/to/file'), '/path/to/file');
+      } else {
+        assert.strictEqual(normalizePath('/path/to/file'), path.resolve('/path/to/file'));
+      }
     });
 
     it('should handle mixed forward/backward slashes', () => {
       assert.strictEqual(normalizePath('path\\to\\file'), 'path/to/file');
     });
 
-    it('should handle paths with colons in filenames', () => {
-      assert.strictEqual(normalizePath('/path/to/file:name'), path.resolve('/path/to/file:name'));
-    });
+    if (!isWindows) {
+      it('should handle paths with colons in filenames', () => {
+        assert.strictEqual(normalizePath('/path/to/file:name'), path.resolve('/path/to/file:name'));
+      });
+    } else {
+      it('should reject colons in non-drive-letter positions on Windows', () => {
+        assert.throws(() => normalizePath('/path/to/file:name'), McpError);
+      });
+    }
   });
 });

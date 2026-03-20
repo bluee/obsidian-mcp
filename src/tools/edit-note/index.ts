@@ -47,14 +47,7 @@ const editSchema = z.object({
       "Folder must be a relative path")
     .describe("Optional subfolder path relative to vault root"),
   operation: z.enum(['append', 'prepend', 'replace'])
-    .describe("Type of edit operation - must be one of: 'append', 'prepend', 'replace'")
-    .refine(
-      (op) => ['append', 'prepend', 'replace'].includes(op),
-      {
-        message: "Invalid operation. Must be one of: 'append', 'prepend', 'replace'",
-        path: ['operation']
-      }
-    ),
+    .describe("Type of edit operation - must be one of: 'append', 'prepend', 'replace'"),
   content: z.string()
     .min(1, "Content cannot be empty for non-delete operations")
     .describe("New content to add/prepend/replace")
@@ -79,7 +72,7 @@ async function editNote(
     : path.join(vaultPath, sanitizedFilename);
   
   // Validate path is within vault
-  validateVaultPath(vaultPath, fullPath);
+  await validateVaultPath(vaultPath, fullPath);
 
   // Create unique backup filename
   const timestamp = Date.now();
@@ -100,16 +93,13 @@ async function editNote(
         await fs.copyFile(fullPath, backupPath);
         await fs.unlink(fullPath);
         
-        // On successful delete, remove backup after a short delay
-        // This gives a small window for potential recovery if needed
-        setTimeout(async () => {
-          try {
-            await fs.unlink(backupPath);
-          } catch (error: unknown) {
-            const errorMessage = error instanceof Error ? error.message : String(error);
-            console.error('Failed to cleanup backup file:', errorMessage);
-          }
-        }, 5000);
+        // Clean up backup after successful delete
+        try {
+          await fs.unlink(backupPath);
+        } catch (error: unknown) {
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          console.error('Failed to cleanup backup file:', errorMessage);
+        }
 
         return {
           success: true,

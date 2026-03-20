@@ -11,6 +11,7 @@ import { createAddTagsTool } from "./tools/add-tags/index.js";
 import { createRemoveTagsTool } from "./tools/remove-tags/index.js";
 import { createRenameTagTool } from "./tools/rename-tag/index.js";
 import { createReadNoteTool } from "./tools/read-note/index.js";
+import { createManageTagsTool } from "./tools/manage-tags/index.js";
 import { listVaultsPrompt } from "./prompts/list-vaults/index.js";
 import { registerPrompt } from "./utils/prompt-factory.js";
 import path from "path";
@@ -492,7 +493,8 @@ Examples:
       createAddTagsTool(vaultsMap),
       createRemoveTagsTool(vaultsMap),
       createRenameTagTool(vaultsMap),
-      createReadNoteTool(vaultsMap)
+      createReadNoteTool(vaultsMap),
+      createManageTagsTool(vaultsMap)
     ];
 
     for (const tool of tools) {
