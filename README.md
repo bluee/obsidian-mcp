@@ -1,8 +1,12 @@
 # Obsidian MCP Server
 
-> This is a fork of [StevenStavrakis/obsidian-mcp](https://github.com/StevenStavrakis/obsidian-mcp) with the following upstream PRs merged:
-> - [#31](https://github.com/StevenStavrakis/obsidian-mcp/pull/31) — Streamable HTTP transport
-> - [#32](https://github.com/StevenStavrakis/obsidian-mcp/pull/32) — Unicode vault name support
+> This is a fork of [StevenStavrakis/obsidian-mcp](https://github.com/StevenStavrakis/obsidian-mcp) with the following changes:
+> - Upstream [#31](https://github.com/StevenStavrakis/obsidian-mcp/pull/31) — Streamable HTTP transport
+> - Upstream [#32](https://github.com/StevenStavrakis/obsidian-mcp/pull/32) — Unicode vault name support
+> - Fix: path validation (`validateVaultPath`/`safeJoinPath`) now correctly awaits async security checks
+> - Fix: `manage-tags` tool registered and available
+> - Fix: backup cleanup in `edit-note` no longer uses fire-and-forget `setTimeout`
+> - Cleanup: removed dead dual-vault code, consistent `McpError` usage
 
 An [MCP (Model Context Protocol)](https://modelcontextprotocol.io) server that enables AI assistants to interact with Obsidian vaults — reading, creating, editing, and managing notes and tags.
 
@@ -64,6 +68,7 @@ node build/main.js --http /path/to/your/vault
 | `search-vault` | Search notes in the vault |
 | `add-tags` | Add tags to a note |
 | `remove-tags` | Remove tags from a note |
+| `manage-tags` | Add or remove tags with advanced options (patterns, location control) |
 | `rename-tag` | Rename a tag across all notes |
 | `list-available-vaults` | List all configured vaults |
 
