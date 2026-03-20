@@ -1,6 +1,7 @@
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import { randomUUID } from 'crypto';
 import express from 'express';
 import {
   CallToolRequestSchema,
@@ -276,18 +277,88 @@ export class ObsidianServer {
     const app = express();
     app.use(express.json());
 
+    // Session management: map sessionId -> transport
+    const sessions = new Map<string, StreamableHTTPServerTransport>();
+
+    const handleSessionRequest = async (req: express.Request, res: express.Response) => {
+      const sessionId = req.headers['mcp-session-id'] as string | undefined;
+      const existing = sessionId ? sessions.get(sessionId) : undefined;
+
+      if (existing) {
+        // Route to existing session transport
+        await existing.handleRequest(req, res, req.body);
+        return;
+      }
+
+      // For GET/DELETE without a valid session, reject
+      if (req.method !== 'POST') {
+        res.status(400).json({
+          jsonrpc: '2.0',
+          error: { code: -32000, message: 'Bad Request: No valid session. Send an initialize request first.' },
+          id: null
+        });
+        return;
+      }
+
+      // New session: create transport with session ID generator
+      const transport = new StreamableHTTPServerTransport({
+        sessionIdGenerator: () => randomUUID(),
+      });
+
+      transport.onclose = () => {
+        const sid = transport.sessionId;
+        if (sid) {
+          sessions.delete(sid);
+          console.error(`Session ${sid} closed`);
+        }
+      };
+
+      await this.server.connect(transport);
+
+      // Store session after connect (sessionId is assigned during initialize handshake)
+      await transport.handleRequest(req, res, req.body);
+
+      if (transport.sessionId) {
+        sessions.set(transport.sessionId, transport);
+        console.error(`Session ${transport.sessionId} created`);
+      }
+    };
+
     app.post('/mcp', async (req, res) => {
       try {
-        const transport = new StreamableHTTPServerTransport({
-          sessionIdGenerator: undefined,
-          enableJsonResponse: true
-        });
-
-        res.on('close', () => transport.close());
-        await this.server.connect(transport);
-        await transport.handleRequest(req, res, req.body);
+        await handleSessionRequest(req, res);
       } catch (error) {
         console.error('Error handling MCP request:', error);
+        if (!res.headersSent) {
+          res.status(500).json({
+            jsonrpc: '2.0',
+            error: { code: -32603, message: 'Internal server error' },
+            id: null
+          });
+        }
+      }
+    });
+
+    app.get('/mcp', async (req, res) => {
+      try {
+        await handleSessionRequest(req, res);
+      } catch (error) {
+        console.error('Error handling SSE request:', error);
+        if (!res.headersSent) {
+          res.status(500).json({
+            jsonrpc: '2.0',
+            error: { code: -32603, message: 'Internal server error' },
+            id: null
+          });
+        }
+      }
+    });
+
+    app.delete('/mcp', async (req, res) => {
+      try {
+        await handleSessionRequest(req, res);
+      } catch (error) {
+        console.error('Error handling session delete:', error);
         if (!res.headersSent) {
           res.status(500).json({
             jsonrpc: '2.0',
@@ -301,7 +372,7 @@ export class ObsidianServer {
     const host = process.env.HOST || 'localhost';
     const port = parseInt(process.env.PORT || '3000');
     app.listen(port, host, () => {
-      console.log(`MCP Server running on http://${host}:${port}/mcp`);
+      console.error(`MCP Server running on http://${host}:${port}/mcp`);
     }).on('error', error => {
       console.error('Server error:', error);
       process.exit(1);

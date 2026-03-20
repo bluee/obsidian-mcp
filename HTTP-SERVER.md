@@ -48,34 +48,39 @@ docker run -p 3000:3000 \
 
 ## Usage
 
-The server exposes an MCP endpoint at `POST /mcp` that accepts JSON-RPC 2.0 requests.
+The server exposes the MCP Streamable HTTP endpoint at `/mcp` supporting `POST`, `GET`, and `DELETE` methods with session management.
 
-### Example Request
+### Session Lifecycle
+
+1. **Initialize** — `POST /mcp` with an `initialize` request creates a new session. The server returns an `Mcp-Session-Id` header.
+2. **Requests** — Subsequent `POST /mcp` requests include the `Mcp-Session-Id` header to route to the existing session.
+3. **SSE Stream** — `GET /mcp` with the `Mcp-Session-Id` header opens an SSE stream for server-initiated notifications.
+4. **Terminate** — `DELETE /mcp` with the `Mcp-Session-Id` header closes the session.
+
+### Example: Initialize and Call a Tool
 
 ```bash
-curl -X POST http://localhost:3000/mcp \
+# 1. Initialize — capture the session ID from response headers
+curl -v -X POST http://localhost:3000/mcp \
   -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
   -d '{
     "jsonrpc": "2.0",
     "id": 1,
-    "method": "tools/list"
+    "method": "initialize",
+    "params": {
+      "protocolVersion": "2025-03-26",
+      "capabilities": {},
+      "clientInfo": { "name": "example", "version": "1.0" }
+    }
   }'
-```
+# Look for: Mcp-Session-Id: <session-id> in response headers
 
-### Available Methods
-
-- `tools/list` - List all available tools
-- `tools/call` - Call a specific tool
-- `resources/list` - List all resources
-- `resources/read` - Read a resource
-- `prompts/list` - List all prompts
-- `prompts/get` - Get a specific prompt
-
-### Example Tool Call
-
-```bash
+# 2. Call a tool using the session ID
 curl -X POST http://localhost:3000/mcp \
   -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -H "Mcp-Session-Id: <session-id>" \
   -d '{
     "jsonrpc": "2.0",
     "id": 2,
@@ -88,16 +93,37 @@ curl -X POST http://localhost:3000/mcp \
       }
     }
   }'
+
+# 3. Terminate session
+curl -X DELETE http://localhost:3000/mcp \
+  -H "Mcp-Session-Id: <session-id>"
 ```
+
+### Available Methods
+
+- `initialize` - Initialize session
+- `tools/list` - List all available tools
+- `tools/call` - Call a specific tool
+- `resources/list` - List all resources
+- `resources/read` - Read a resource
+- `prompts/list` - List all prompts
+- `prompts/get` - Get a specific prompt
 
 ## Configuration
 
-- `PORT` - Server port (default: 3000)
-- Vault paths are passed as command-line arguments
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `PORT` | 3000 | Server port |
+| `HOST` | localhost | Bind address |
+
+Vault paths are passed as command-line arguments.
 
 ## Features
 
-- Stateless request handling (new transport per request)
+- Stateful session management with unique session IDs
+- SSE streaming for responses and server-initiated notifications
+- `GET /mcp` for persistent SSE notification stream
+- `DELETE /mcp` for session teardown
 - JSON-RPC 2.0 protocol
 - All tools from the stdio version
 - Resource and prompt support
