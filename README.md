@@ -1,30 +1,37 @@
 # Obsidian MCP Server
 
 > This is a fork of [StevenStavrakis/obsidian-mcp](https://github.com/StevenStavrakis/obsidian-mcp) with the following changes:
+> - **New tools:** frontmatter queries, backlinks search, vault statistics, batch updates
+> - **Enhanced search:** regex support, frontmatter filtering, result limits, path exclusions
+> - **Enhanced read:** partial reads (frontmatter-only or content-only)
+> - **File locking:** advisory locks on all write operations to prevent concurrent edit races
+> - **Relaxed vault check:** works with any markdown folder (`.obsidian` directory no longer required)
+> - **Multi-session HTTP:** fixed one-Server-per-transport bug for Streamable HTTP mode
 > - Upstream [#31](https://github.com/StevenStavrakis/obsidian-mcp/pull/31) — Streamable HTTP transport
 > - Upstream [#32](https://github.com/StevenStavrakis/obsidian-mcp/pull/32) — Unicode vault name support
-> - Fix: path validation (`validateVaultPath`/`safeJoinPath`) now correctly awaits async security checks
-> - Fix: `manage-tags` tool registered and available
-> - Fix: backup cleanup in `edit-note` no longer uses fire-and-forget `setTimeout`
-> - Cleanup: removed dead dual-vault code, consistent `McpError` usage
 
-An [MCP (Model Context Protocol)](https://modelcontextprotocol.io) server that enables AI assistants to interact with Obsidian vaults — reading, creating, editing, and managing notes and tags.
+An [MCP (Model Context Protocol)](https://modelcontextprotocol.io) server that enables AI assistants to interact with Obsidian vaults or any folder of markdown files — reading, creating, editing, searching, and managing notes and tags.
 
 **Please backup your vault before use.** This MCP has read and write access. Git or any other backup method is recommended.
 
 ## Features
 
 - Read, create, edit, move, and delete notes
-- Search vault contents (full-text and tag-based)
-- Manage tags (add, remove, rename)
-- Create directories
+- Search vault contents (full-text, tag-based, and regex)
+- Query notes by frontmatter fields (e.g. `status:open`, `priority:high`)
+- Find backlinks — discover which notes link to a target note
+- Vault statistics — tag frequency, folder distribution, frontmatter key analysis
+- Batch update frontmatter across multiple notes with dry-run preview
+- Manage tags (add, remove, rename) with file locking
+- Partial note reads (frontmatter-only or content-only)
 - Multi-vault support (up to 10 vaults)
-- HTTP server mode via streamable-http transport
+- HTTP server mode via Streamable HTTP transport
+- Works with any markdown folder (Obsidian not required)
 
 ## Requirements
 
 - Node.js 20+
-- An Obsidian vault (opened in Obsidian at least once)
+- A folder containing markdown files (Obsidian vault optional)
 
 ## Install
 
@@ -59,17 +66,21 @@ node build/main.js --http /path/to/your/vault
 
 | Tool | Description |
 |------|-------------|
-| `read-note` | Read the contents of a note |
+| `read-note` | Read a note (full, frontmatter-only, or content-only) |
 | `create-note` | Create a new note |
-| `edit-note` | Edit an existing note |
+| `edit-note` | Edit an existing note (with file locking) |
 | `delete-note` | Delete a note |
 | `move-note` | Move a note to a different location |
 | `create-directory` | Create a new directory |
-| `search-vault` | Search notes in the vault |
-| `add-tags` | Add tags to a note |
-| `remove-tags` | Remove tags from a note |
-| `manage-tags` | Add or remove tags with advanced options (patterns, location control) |
-| `rename-tag` | Rename a tag across all notes |
+| `search-vault` | Search notes (text, regex, tags) with frontmatter filtering |
+| `query-frontmatter` | Filter notes by YAML frontmatter fields |
+| `find-backlinks` | Find all notes linking to a target note |
+| `vault-stats` | Vault analytics: note counts, tag frequency, key distribution |
+| `batch-update` | Bulk update frontmatter across matching notes |
+| `add-tags` | Add tags to a note (with file locking) |
+| `remove-tags` | Remove tags from a note (with file locking) |
+| `manage-tags` | Add or remove tags with advanced options |
+| `rename-tag` | Rename a tag across all notes (with file locking) |
 | `list-available-vaults` | List all configured vaults |
 
 ## Development
