@@ -8,6 +8,7 @@ import { fileExists } from "../../utils/files.js";
 import { createNoteNotFoundError, handleFsError } from "../../utils/errors.js";
 import { createToolResponse, formatFileResult } from "../../utils/responses.js";
 import { createTool } from "../../utils/tool-factory.js";
+import { parseNote } from "../../utils/tags.js";
 
 // Input validation schema with descriptions
 const schema = z.object({
@@ -21,9 +22,13 @@ const schema = z.object({
     .describe("Just the note name without any path separators (e.g. 'my-note.md', NOT 'folder/my-note.md')"),
   folder: z.string()
     .optional()
-    .refine(folder => !folder || !path.isAbsolute(folder), 
+    .refine(folder => !folder || !path.isAbsolute(folder),
       "Folder must be a relative path")
-    .describe("Optional subfolder path relative to vault root")
+    .describe("Optional subfolder path relative to vault root"),
+  section: z.enum(['all', 'frontmatter', 'content'])
+    .optional()
+    .default('all')
+    .describe("Which part to return: 'all' (default), 'frontmatter' (YAML as JSON), or 'content' (body only)")
 }).strict();
 
 type ReadNoteInput = z.infer<typeof schema>;
@@ -77,17 +82,25 @@ Examples:
     schema,
     handler: async (args, vaultPath, _vaultName) => {
       const result = await readNote(vaultPath, args.filename, args.folder);
-      
-      const formattedResult = formatFileResult({
-        success: result.success,
-        message: result.message,
-        path: result.path,
-        operation: result.operation
-      });
-      
-      return createToolResponse(
-        `${result.content}\n\n${formattedResult}`
-      );
+
+      let output: string;
+      if (args.section === 'frontmatter') {
+        const parsed = parseNote(result.content);
+        output = JSON.stringify(parsed.frontmatter, null, 2);
+      } else if (args.section === 'content') {
+        const parsed = parseNote(result.content);
+        output = parsed.content.trim();
+      } else {
+        const formattedResult = formatFileResult({
+          success: result.success,
+          message: result.message,
+          path: result.path,
+          operation: result.operation
+        });
+        output = `${result.content}\n\n${formattedResult}`;
+      }
+
+      return createToolResponse(output);
     }
   }, vaults);
 }

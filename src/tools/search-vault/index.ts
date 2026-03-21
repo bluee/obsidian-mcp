@@ -6,9 +6,10 @@ import { McpError, ErrorCode } from "@modelcontextprotocol/sdk/types.js";
 import { validateVaultPath, safeJoinPath, normalizePath } from "../../utils/path.js";
 import { getAllMarkdownFiles } from "../../utils/files.js";
 import { handleFsError } from "../../utils/errors.js";
-import { extractTags, normalizeTag, matchesTagPattern } from "../../utils/tags.js";
+import { extractTags, normalizeTag, matchesTagPattern, parseNote } from "../../utils/tags.js";
 import { createToolResponse, formatSearchResult } from "../../utils/responses.js";
 import { createTool } from "../../utils/tool-factory.js";
+import { parseQueryExpression, matchesFrontmatter } from "../../utils/query.js";
 
 // Input validation schema with descriptions
 const schema = z.object({
@@ -28,7 +29,21 @@ const schema = z.object({
   searchType: z.enum(['content', 'filename', 'both'])
     .optional()
     .default('content')
-    .describe("Type of search to perform (default: content)")
+    .describe("Type of search to perform (default: content)"),
+  regex: z.boolean()
+    .optional()
+    .default(false)
+    .describe("Use regex pattern matching instead of string search"),
+  frontmatterFilter: z.array(z.string())
+    .optional()
+    .describe("Filter results by frontmatter conditions, e.g. ['status:open', 'priority:high']"),
+  maxResults: z.number()
+    .optional()
+    .default(100)
+    .describe("Maximum number of file results to return (default: 100)"),
+  excludePaths: z.array(z.string())
+    .optional()
+    .describe("Folder paths to exclude from search, e.g. ['templates', '.trash']")
 }).strict();
 
 type SearchVaultInput = z.infer<typeof schema>;
@@ -57,16 +72,31 @@ async function searchFilenames(
 
     for (const file of files) {
       const relativePath = path.relative(vaultPath, file);
-      const searchTarget = options.caseSensitive ? relativePath : relativePath.toLowerCase();
 
-      if (searchTarget.includes(searchQuery)) {
+      // Exclude paths
+      if (options.excludePaths?.some(ep => relativePath.startsWith(ep))) continue;
+
+      const searchTarget = options.caseSensitive ? relativePath : relativePath.toLowerCase();
+      let matched = false;
+
+      if (options.useRegex) {
+        try {
+          const re = new RegExp(searchQuery, options.caseSensitive ? '' : 'i');
+          matched = re.test(relativePath);
+        } catch { matched = false; }
+      } else {
+        matched = searchTarget.includes(searchQuery);
+      }
+
+      if (matched) {
         results.push({
           file: relativePath,
           matches: [{
-            line: 0, // We use 0 to indicate this is a filename match
+            line: 0,
             text: `Filename match: ${relativePath}`
           }]
         });
+        if (options.maxResults && results.length >= options.maxResults) break;
       }
     }
 
@@ -90,18 +120,29 @@ async function searchContent(
     const isTagSearchQuery = isTagSearch(query);
     const normalizedTagQuery = isTagSearchQuery ? normalizeTagQuery(query) : '';
 
+    // Parse frontmatter filter conditions if provided
+    const fmConditions = options.frontmatterFilter?.map(parseQueryExpression) ?? [];
+
     for (const file of files) {
+      const relativePath = path.relative(vaultPath, file);
+
+      // Exclude paths
+      if (options.excludePaths?.some(ep => relativePath.startsWith(ep))) continue;
+
       try {
         const content = await fs.readFile(file, "utf-8");
+
+        // Apply frontmatter filter
+        if (fmConditions.length > 0) {
+          const parsed = parseNote(content);
+          if (!matchesFrontmatter(parsed.frontmatter, fmConditions)) continue;
+        }
+
         const lines = content.split("\n");
         const matches: SearchResult["matches"] = [];
 
         if (isTagSearchQuery) {
-          // For tag searches, extract all tags from the content
-          const fileTags = extractTags(content);
-
           lines.forEach((line, index) => {
-            // Look for tag matches in each line
             const lineTags = extractTags(line);
             const hasMatchingTag = lineTags.some(tag => {
               const normalizedTag = normalizeTag(tag);
@@ -115,30 +156,34 @@ async function searchContent(
               });
             }
           });
+        } else if (options.useRegex) {
+          // Regex search
+          try {
+            const re = new RegExp(query, options.caseSensitive ? 'g' : 'gi');
+            lines.forEach((line, index) => {
+              if (re.test(line)) {
+                matches.push({ line: index + 1, text: line.trim() });
+                re.lastIndex = 0; // reset for next test
+              }
+            });
+          } catch { /* invalid regex, skip */ }
         } else {
           // Regular text search
           const searchQuery = options.caseSensitive ? query : query.toLowerCase();
-
           lines.forEach((line, index) => {
             const searchLine = options.caseSensitive ? line : line.toLowerCase();
             if (searchLine.includes(searchQuery)) {
-              matches.push({
-                line: index + 1,
-                text: line.trim()
-              });
+              matches.push({ line: index + 1, text: line.trim() });
             }
           });
         }
 
         if (matches.length > 0) {
-          results.push({
-            file: path.relative(vaultPath, file),
-            matches
-          });
+          results.push({ file: relativePath, matches });
+          if (options.maxResults && results.length >= options.maxResults) break;
         }
       } catch (err) {
         console.error(`Error reading file ${file}:`, err);
-        // Continue with other files
       }
     }
 
@@ -225,22 +270,26 @@ async function searchVault(
 export const createSearchVaultTool = (vaults: Map<string, string>) => {
   return createTool<SearchVaultInput>({
     name: "search-vault",
-    description: `Search for specific content within vault notes (NOT for listing available vaults - use the list-vaults prompt for that).
+    description: `Search for specific content within vault notes.
 
-This tool searches through note contents and filenames for specific text or tags:
-- Content search: { "vault": "vault1", "query": "hello world", "searchType": "content" }
-- Filename search: { "vault": "vault2", "query": "meeting-notes", "searchType": "filename" }
-- Search both: { "vault": "vault1", "query": "project", "searchType": "both" }
-- Tag search: { "vault": "vault2", "query": "tag:status/active" }
-- Search in subfolder: { "vault": "vault1", "query": "hello", "path": "journal/2024" }
-
-Note: To get a list of available vaults, use the list-vaults prompt instead of this search tool.`,
+Examples:
+- Content search: { "vault": "v", "query": "hello world" }
+- Regex search: { "vault": "v", "query": "defect.*status", "regex": true }
+- Tag search: { "vault": "v", "query": "tag:status/active" }
+- With frontmatter filter: { "vault": "v", "query": "rectify", "frontmatterFilter": ["status:open", "priority:high"] }
+- Filename search: { "vault": "v", "query": "meeting", "searchType": "filename" }
+- With exclusions: { "vault": "v", "query": "test", "excludePaths": [".trash", "templates"] }
+- Limited results: { "vault": "v", "query": "defect", "maxResults": 20 }`,
     schema,
     handler: async (args, vaultPath, _vaultName) => {
       const options: SearchOptions = {
         path: args.path,
         caseSensitive: args.caseSensitive,
-        searchType: args.searchType
+        searchType: args.searchType,
+        useRegex: args.regex,
+        maxResults: args.maxResults,
+        frontmatterFilter: args.frontmatterFilter,
+        excludePaths: args.excludePaths,
       };
       const result = await searchVault(vaultPath, args.query, options);
       return createToolResponse(formatSearchResult(result));

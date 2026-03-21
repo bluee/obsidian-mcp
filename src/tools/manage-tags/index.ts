@@ -14,6 +14,7 @@ import {
   normalizeTag
 } from "../../utils/tags.js";
 import { createTool } from "../../utils/tool-factory.js";
+import { withLock } from "../../utils/locks.js";
 
 // Input validation schema
 const schema = z.object({
@@ -217,8 +218,10 @@ async function manageTags(
 
       // Save changes if modified
       if (modified) {
-        const updatedContent = stringifyNote(parsed);
-        await fs.writeFile(fullPath, updatedContent);
+        await withLock(fullPath, async () => {
+          const updatedContent = stringifyNote(parsed);
+          await fs.writeFile(fullPath, updatedContent);
+        });
         results.success.push(filename);
       }
     } catch (error) {

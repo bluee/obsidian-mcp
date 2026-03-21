@@ -54,27 +54,12 @@ export class ObsidianServer {
       const expandedPath = expandHome(config.path);
       const resolvedPath = path.resolve(expandedPath);
       
-      // Check if .obsidian directory exists
+      // Check for .obsidian directory (warn only, not required)
       const obsidianConfigPath = path.join(resolvedPath, '.obsidian');
       try {
-        const stats = fs.statSync(obsidianConfigPath);
-        if (!stats.isDirectory()) {
-          throw new McpError(
-            ErrorCode.InvalidRequest,
-            `Invalid Obsidian vault at ${config.path}: .obsidian exists but is not a directory`
-          );
-        }
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-          throw new McpError(
-            ErrorCode.InvalidRequest,
-            `Invalid Obsidian vault at ${config.path}: Missing .obsidian directory. Please open this folder in Obsidian first to initialize it.`
-          );
-        }
-        throw new McpError(
-          ErrorCode.InvalidRequest,
-          `Error accessing vault at ${config.path}: ${(error as Error).message}`
-        );
+        fs.statSync(obsidianConfigPath);
+      } catch {
+        console.error(`Warning: No .obsidian directory found in ${config.path} — not an Obsidian vault, but continuing anyway`);
       }
 
       this.vaults.set(config.name, resolvedPath);
@@ -116,6 +101,22 @@ export class ObsidianServer {
     };
   }
 
+  /**
+   * Creates a new Server instance with the same tools/resources/prompts handlers.
+   * Needed because the SDK requires one Server per transport connection.
+   */
+  private createSessionServer(): Server {
+    const server = new Server(
+      { name: "obsidian-mcp", version: "1.0.6" },
+      { capabilities: { resources: {}, tools: {}, prompts: {} } }
+    );
+    this.setupHandlersOn(server);
+    server.onerror = (error) => {
+      console.error("Session server error:", error);
+    };
+    return server;
+  }
+
   registerTool<T>(tool: Tool<T>) {
     console.error(`Registering tool: ${tool.name}`);
     this.tools.set(tool.name, tool);
@@ -141,14 +142,18 @@ export class ObsidianServer {
   }
 
   private setupHandlers() {
+    this.setupHandlersOn(this.server);
+  }
+
+  private setupHandlersOn(target: Server) {
     // List available prompts
-    this.server.setRequestHandler(ListPromptsRequestSchema, async (request) => {
+    target.setRequestHandler(ListPromptsRequestSchema, async (request) => {
       this.validateRequest(request);
       return listPrompts();
     });
 
     // Get specific prompt
-    this.server.setRequestHandler(GetPromptRequestSchema, async (request) => {
+    target.setRequestHandler(GetPromptRequestSchema, async (request) => {
       this.validateRequest(request);
       const { name, arguments: args } = request.params;
       
@@ -167,7 +172,7 @@ export class ObsidianServer {
     });
 
     // List available tools
-    this.server.setRequestHandler(ListToolsRequestSchema, async (request) => {
+    target.setRequestHandler(ListToolsRequestSchema, async (request) => {
       this.validateRequest(request);
       return {
         tools: Array.from(this.tools.values()).map(tool => ({
@@ -179,7 +184,7 @@ export class ObsidianServer {
     });
 
     // List available resources
-    this.server.setRequestHandler(ListResourcesRequestSchema, async (request) => {
+    target.setRequestHandler(ListResourcesRequestSchema, async (request) => {
       this.validateRequest(request);
       const resources = await listVaultResources(this.vaults);
       return {
@@ -189,7 +194,7 @@ export class ObsidianServer {
     });
 
     // Read resource content
-    this.server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
+    target.setRequestHandler(ReadResourceRequestSchema, async (request) => {
       this.validateRequest(request);
       const uri = request.params?.uri;
       if (!uri || typeof uri !== 'string') {
@@ -205,7 +210,7 @@ export class ObsidianServer {
       };
     });
 
-    this.server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
+    target.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
       this.validateRequest(request);
       const params = request.params;
       if (!params || typeof params !== 'object') {
@@ -313,7 +318,9 @@ export class ObsidianServer {
         }
       };
 
-      await this.server.connect(transport);
+      // Each session needs its own Server+handlers (SDK requires one Server per transport)
+      const sessionServer = this.createSessionServer();
+      await sessionServer.connect(transport);
 
       // Store session after connect (sessionId is assigned during initialize handshake)
       await transport.handleRequest(req, res, req.body);

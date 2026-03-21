@@ -8,6 +8,7 @@ import { fileExists } from "../../utils/files.js";
 import { createNoteNotFoundError, handleFsError } from "../../utils/errors.js";
 import { createToolResponse, formatFileResult } from "../../utils/responses.js";
 import { createTool } from "../../utils/tool-factory.js";
+import { withLock } from "../../utils/locks.js";
 
 // Input validation schema with descriptions
 // Schema for delete operation
@@ -209,14 +210,17 @@ Examples:
 - INCORRECT: { "filename": "journal/2024/note.md" } (don't put path in filename)`,
     schema,
     handler: async (args, vaultPath, _vaultName) => {
-      const result = await editNote(
-        vaultPath, 
-        args.filename, 
-        args.operation, 
-        'content' in args ? args.content : undefined, 
-        args.folder
-      );
-      return createToolResponse(formatFileResult(result));
+      const fullPath = path.join(vaultPath, args.folder || '', ensureMarkdownExtension(args.filename));
+      return withLock(fullPath, async () => {
+        const result = await editNote(
+          vaultPath,
+          args.filename,
+          args.operation,
+          'content' in args ? args.content : undefined,
+          args.folder
+        );
+        return createToolResponse(formatFileResult(result));
+      });
     }
   }, vaults);
 }

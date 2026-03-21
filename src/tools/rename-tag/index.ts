@@ -14,6 +14,7 @@ import {
   fileExists
 } from "../../utils/files.js";
 import { createTool } from "../../utils/tool-factory.js";
+import { withLock } from "../../utils/locks.js";
 
 // Input validation schema with descriptions
 const schema = z.object({
@@ -310,7 +311,9 @@ async function processBatch(
             content: updatedContent
           });
           
-          await fs.writeFile(filePath, updatedNote, 'utf-8');
+          await withLock(filePath, async () => {
+            await fs.writeFile(filePath, updatedNote, 'utf-8');
+          });
 
           // Record changes
           if (frontmatterChanges.length > 0) {

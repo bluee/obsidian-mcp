@@ -14,6 +14,7 @@ import {
 } from "../../utils/tags.js";
 import { createToolResponse, formatTagResult } from "../../utils/responses.js";
 import { createTool } from "../../utils/tool-factory.js";
+import { withLock } from "../../utils/locks.js";
 
 // Input validation schema with descriptions
 const schema = z.object({
@@ -145,8 +146,10 @@ async function addTags(
 
       // Save changes if modified
       if (modified) {
-        const updatedContent = stringifyNote(parsed);
-        await fs.writeFile(fullPath, updatedContent);
+        await withLock(fullPath, async () => {
+          const updatedContent = stringifyNote(parsed);
+          await fs.writeFile(fullPath, updatedContent);
+        });
         result.successCount++;
       }
     } catch (error) {

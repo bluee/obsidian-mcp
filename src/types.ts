@@ -45,6 +45,8 @@ export interface SearchOptions {
   maxResults?: number;
   path?: string;
   searchType?: 'content' | 'filename' | 'both';
+  frontmatterFilter?: string[];
+  excludePaths?: string[];
 }
 
 // Tag types

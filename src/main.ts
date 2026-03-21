@@ -12,6 +12,10 @@ import { createRemoveTagsTool } from "./tools/remove-tags/index.js";
 import { createRenameTagTool } from "./tools/rename-tag/index.js";
 import { createReadNoteTool } from "./tools/read-note/index.js";
 import { createManageTagsTool } from "./tools/manage-tags/index.js";
+import { createQueryFrontmatterTool } from "./tools/query-frontmatter/index.js";
+import { createFindBacklinksTool } from "./tools/find-backlinks/index.js";
+import { createVaultStatsTool } from "./tools/vault-stats/index.js";
+import { createBatchUpdateTool } from "./tools/batch-update/index.js";
 import { listVaultsPrompt } from "./prompts/list-vaults/index.js";
 import { registerPrompt } from "./utils/prompt-factory.js";
 import path from "path";
@@ -218,70 +222,12 @@ Examples:
         // Check if path is readable and writable
         await fs.access(absolutePath, fsConstants.R_OK | fsConstants.W_OK);
 
-        // Check if this is a valid Obsidian vault
+        // Check for .obsidian directory (warn only, not required)
         const obsidianConfigPath = path.join(absolutePath, '.obsidian');
-        const obsidianAppConfigPath = path.join(obsidianConfigPath, 'app.json');
-        
         try {
-          // Check .obsidian directory
-          const configStats = await fs.stat(obsidianConfigPath);
-          if (!configStats.isDirectory()) {
-            const errorMessage = `Invalid Obsidian vault configuration in ${vaultPath}\n` +
-              `The .obsidian folder exists but is not a directory\n` +
-              `Try removing it and reopening the vault in Obsidian`;
-            
-            console.error(`Error: ${errorMessage}`);
-            
-            process.stdout.write(JSON.stringify({
-              jsonrpc: "2.0",
-              error: {
-                code: ErrorCode.InvalidRequest,
-                message: errorMessage
-              },
-              id: null
-            }));
-            
-            process.exit(1);
-          }
-
-          // Check app.json to verify it's properly initialized
-          await fs.access(obsidianAppConfigPath, fsConstants.R_OK);
-          
-        } catch (error) {
-          if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-            const errorMessage = `Not a valid Obsidian vault (${vaultPath})\n` +
-              `Missing or incomplete .obsidian configuration\n\n` +
-              `To fix this:\n` +
-              `1. Open Obsidian\n` +
-              `2. Click "Open folder as vault"\n` +
-              `3. Select the directory: ${absolutePath}\n` +
-              `4. Wait for Obsidian to initialize the vault\n` +
-              `5. Try running this command again`;
-            
-            console.error(`Error: ${errorMessage}`);
-            
-            process.stdout.write(JSON.stringify({
-              jsonrpc: "2.0",
-              error: {
-                code: ErrorCode.InvalidRequest,
-                message: errorMessage
-              },
-              id: null
-            }));
-          } else {
-            const errorMessage = `Error checking Obsidian configuration in ${vaultPath}: ${error instanceof Error ? error.message : String(error)}`;
-            console.error(`Error: ${errorMessage}`);
-            
-            process.stdout.write(JSON.stringify({
-              jsonrpc: "2.0",
-              error: {
-                code: ErrorCode.InternalError,
-                message: errorMessage
-              },
-              id: null
-            }));
-          }
-          process.exit(1);
+          await fs.stat(obsidianConfigPath);
+        } catch {
+          console.error(`Warning: No .obsidian directory found in ${vaultPath} — not an Obsidian vault, but continuing anyway`);
         }
 
         return absolutePath;
@@ -494,7 +440,11 @@ Examples:
       createRemoveTagsTool(vaultsMap),
       createRenameTagTool(vaultsMap),
       createReadNoteTool(vaultsMap),
-      createManageTagsTool(vaultsMap)
+      createManageTagsTool(vaultsMap),
+      createQueryFrontmatterTool(vaultsMap),
+      createFindBacklinksTool(vaultsMap),
+      createVaultStatsTool(vaultsMap),
+      createBatchUpdateTool(vaultsMap)
     ];
 
     for (const tool of tools) {
