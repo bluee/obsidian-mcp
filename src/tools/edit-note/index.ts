@@ -9,6 +9,7 @@ import { createNoteNotFoundError, handleFsError } from "../../utils/errors.js";
 import { createToolResponse, formatFileResult } from "../../utils/responses.js";
 import { createTool } from "../../utils/tool-factory.js";
 import { withLock } from "../../utils/locks.js";
+import { invalidateVaultIndex } from "../../utils/vault-index.js";
 
 // Input validation schema with descriptions
 // Schema for delete operation
@@ -219,6 +220,7 @@ Examples:
           'content' in args ? args.content : undefined,
           args.folder
         );
+        invalidateVaultIndex(vaultPath);
         return createToolResponse(formatFileResult(result));
       });
     }

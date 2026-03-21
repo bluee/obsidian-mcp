@@ -19,7 +19,11 @@ const schema = z.object({
   includeContext: z.boolean()
     .optional()
     .default(true)
-    .describe("Whether to include the line content for each backlink (default: true)")
+    .describe("Whether to include the line content for each backlink (default: true)"),
+  searchMode: z.enum(['links', 'text', 'all'])
+    .optional()
+    .default('all')
+    .describe("Search mode: 'links' (wikilinks/markdown links only), 'text' (plain text mentions), 'all' (both, default)")
 }).strict();
 
 type FindBacklinksInput = z.infer<typeof schema>;
@@ -37,12 +41,13 @@ interface BacklinkFile {
 export function createFindBacklinksTool(vaults: Map<string, string>) {
   return createTool<FindBacklinksInput>({
     name: "find-backlinks",
-    description: `Find all notes that link to a given target note. Searches for wikilinks ([[target]]) and markdown links ([text](target.md)).
+    description: `Find all notes that reference a target note. Searches wikilinks, markdown links, and plain text mentions.
 
 Examples:
-- Find backlinks: { "vault": "my-vault", "target": "meeting-notes" }
-- Without context: { "vault": "my-vault", "target": "project-plan", "includeContext": false }
-- Search in subfolder: { "vault": "my-vault", "target": "API docs", "path": "projects" }`,
+- Find all references: { "vault": "v", "target": "A-007" }
+- Links only: { "vault": "v", "target": "meeting-notes", "searchMode": "links" }
+- Text mentions only: { "vault": "v", "target": "A-007", "searchMode": "text" }
+- In subfolder: { "vault": "v", "target": "A-007", "path": "DEFECTS" }`,
     schema,
     handler: async (args, vaultPath, _vaultName) => {
       const normalizedVaultPath = normalizePath(vaultPath);
@@ -54,16 +59,26 @@ Examples:
       const targetLower = args.target.toLowerCase();
 
       // Build regex patterns for case-insensitive matching
-      // Wikilink: [[target]] or [[target|display text]]
       const escapedTarget = args.target.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const wikilinkPattern = new RegExp(`\\[\\[${escapedTarget}(\\|[^\\]]*)?\\]\\]`, 'gi');
+      const searchLinks = args.searchMode === 'links' || args.searchMode === 'all';
+      const searchText = args.searchMode === 'text' || args.searchMode === 'all';
+
+      // Wikilink: [[target]] or [[target|display text]]
+      const wikilinkPattern = searchLinks ? new RegExp(`\\[\\[${escapedTarget}(\\|[^\\]]*)?\\]\\]`, 'gi') : null;
       // Markdown link: [any text](target.md) or [any text](path/to/target.md)
-      const mdLinkPattern = new RegExp(`\\[[^\\]]*\\]\\([^)]*${escapedTarget}\\.md\\)`, 'gi');
+      const mdLinkPattern = searchLinks ? new RegExp(`\\[[^\\]]*\\]\\([^)]*${escapedTarget}\\.md\\)`, 'gi') : null;
+      // Plain text: word-boundary match for the target string
+      const textPattern = searchText ? new RegExp(`\\b${escapedTarget}\\b`, 'gi') : null;
 
       const backlinkFiles: BacklinkFile[] = [];
       let totalMatches = 0;
 
       for (const file of files) {
+        // Skip the target note itself
+        const relativePath = path.relative(normalizedVaultPath, file);
+        const basename = path.basename(file, '.md');
+        if (basename.toLowerCase() === targetLower) continue;
+
         try {
           const content = await fs.readFile(file, "utf-8");
           const lines = content.split("\n");
@@ -71,11 +86,22 @@ Examples:
 
           for (let i = 0; i < lines.length; i++) {
             const line = lines[i];
-            // Reset regex lastIndex for each line
-            wikilinkPattern.lastIndex = 0;
-            mdLinkPattern.lastIndex = 0;
+            let matched = false;
 
-            if (wikilinkPattern.test(line) || mdLinkPattern.test(line)) {
+            if (wikilinkPattern) {
+              wikilinkPattern.lastIndex = 0;
+              if (wikilinkPattern.test(line)) matched = true;
+            }
+            if (!matched && mdLinkPattern) {
+              mdLinkPattern.lastIndex = 0;
+              if (mdLinkPattern.test(line)) matched = true;
+            }
+            if (!matched && textPattern) {
+              textPattern.lastIndex = 0;
+              if (textPattern.test(line)) matched = true;
+            }
+
+            if (matched) {
               matches.push({
                 line: i + 1,
                 text: line.trim()
@@ -85,7 +111,7 @@ Examples:
 
           if (matches.length > 0) {
             backlinkFiles.push({
-              file: path.relative(normalizedVaultPath, file),
+              file: relativePath,
               matches
             });
             totalMatches += matches.length;

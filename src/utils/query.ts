@@ -1,8 +1,6 @@
-import { promises as fs } from "fs";
 import path from "path";
-import { getAllMarkdownFiles } from "./files.js";
-import { parseNote } from "./tags.js";
-import { normalizePath, safeJoinPath } from "./path.js";
+import { normalizePath } from "./path.js";
+import { getVaultIndex } from "./vault-index.js";
 
 export interface QueryCondition {
   field: string;
@@ -31,6 +29,16 @@ export function parseQueryExpression(expr: string): QueryCondition {
 }
 
 /**
+ * Convert a value to a comparable string, handling Date objects from YAML parsing.
+ */
+function toComparableString(value: any): string {
+  if (value instanceof Date) {
+    return value.toISOString().slice(0, 10); // YYYY-MM-DD
+  }
+  return String(value);
+}
+
+/**
  * Check if a frontmatter object matches all conditions (AND logic)
  */
 export function matchesFrontmatter(frontmatter: Record<string, any>, conditions: QueryCondition[]): boolean {
@@ -48,42 +56,45 @@ export function matchesFrontmatter(frontmatter: Record<string, any>, conditions:
           // Array membership check (case-insensitive)
           const target = condition.value.toLowerCase();
           return fieldValue.some((item: any) =>
-            String(item).toLowerCase() === target
+            toComparableString(item).toLowerCase() === target
           );
         }
         // Scalar exact match (case-insensitive)
-        return String(fieldValue).toLowerCase() === condition.value.toLowerCase();
+        return toComparableString(fieldValue).toLowerCase() === condition.value.toLowerCase();
       }
 
       case '!=': {
         if (Array.isArray(fieldValue)) {
           const target = condition.value.toLowerCase();
           return !fieldValue.some((item: any) =>
-            String(item).toLowerCase() === target
+            toComparableString(item).toLowerCase() === target
           );
         }
-        return String(fieldValue).toLowerCase() !== condition.value.toLowerCase();
+        return toComparableString(fieldValue).toLowerCase() !== condition.value.toLowerCase();
       }
 
       case '>':
       case '<':
       case '>=':
       case '<=': {
-        const numField = parseFloat(String(fieldValue));
-        const numValue = parseFloat(condition.value);
+        const strField = toComparableString(fieldValue);
+        const isDate = fieldValue instanceof Date || /^\d{4}-\d{2}-\d{2}/.test(condition.value);
 
-        // Use numeric comparison if both parse as numbers
-        if (!isNaN(numField) && !isNaN(numValue)) {
-          switch (condition.operator) {
-            case '>': return numField > numValue;
-            case '<': return numField < numValue;
-            case '>=': return numField >= numValue;
-            case '<=': return numField <= numValue;
+        // Use numeric comparison only if neither side looks like a date
+        if (!isDate) {
+          const numField = parseFloat(strField);
+          const numValue = parseFloat(condition.value);
+          if (!isNaN(numField) && !isNaN(numValue)) {
+            switch (condition.operator) {
+              case '>': return numField > numValue;
+              case '<': return numField < numValue;
+              case '>=': return numField >= numValue;
+              case '<=': return numField <= numValue;
+            }
           }
         }
 
-        // Fall back to string comparison (works for ISO dates)
-        const strField = String(fieldValue);
+        // String comparison (works for ISO dates)
         const strValue = condition.value;
         switch (condition.operator) {
           case '>': return strField > strValue;
@@ -99,34 +110,23 @@ export function matchesFrontmatter(frontmatter: Record<string, any>, conditions:
 }
 
 /**
- * Scan vault notes and return those matching all query conditions
+ * Scan vault notes and return those matching all query conditions.
+ * Uses the vault index for fast cached lookups.
  */
 export async function queryNotes(
   vaultPath: string,
   conditions: QueryCondition[],
   subfolder?: string
 ): Promise<QueryResult[]> {
-  const normalizedVaultPath = normalizePath(vaultPath);
-  const searchDir = subfolder
-    ? await safeJoinPath(normalizedVaultPath, subfolder)
-    : normalizedVaultPath;
-
-  const files = await getAllMarkdownFiles(normalizedVaultPath, searchDir);
+  const notes = await getVaultIndex(vaultPath, subfolder);
   const results: QueryResult[] = [];
 
-  for (const file of files) {
-    try {
-      const content = await fs.readFile(file, "utf-8");
-      const parsed = parseNote(content);
-
-      if (parsed.hasFrontmatter && matchesFrontmatter(parsed.frontmatter, conditions)) {
-        results.push({
-          file: path.relative(normalizedVaultPath, file),
-          frontmatter: parsed.frontmatter
-        });
-      }
-    } catch (error) {
-      console.error(`Skipping file ${file}: ${error instanceof Error ? error.message : String(error)}`);
+  for (const note of notes) {
+    if (note.hasFrontmatter && matchesFrontmatter(note.frontmatter, conditions)) {
+      results.push({
+        file: note.relativePath,
+        frontmatter: note.frontmatter
+      });
     }
   }
 

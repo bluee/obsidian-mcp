@@ -5,6 +5,7 @@ import { parseQueryExpression, queryNotes } from "../../utils/query.js";
 import { withLock } from "../../utils/locks.js";
 import { parseNote, stringifyNote } from "../../utils/tags.js";
 import { normalizePath } from "../../utils/path.js";
+import { invalidateVaultIndex } from "../../utils/vault-index.js";
 import { createToolResponse } from "../../utils/responses.js";
 import { createTool } from "../../utils/tool-factory.js";
 
@@ -122,6 +123,7 @@ Examples:
         }
       }
 
+      if (updated > 0) invalidateVaultIndex(vaultPath);
       return createToolResponse(lines.join('\n'));
     }
   }, vaults);

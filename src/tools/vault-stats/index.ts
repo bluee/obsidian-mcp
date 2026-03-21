@@ -1,9 +1,7 @@
 import { z } from "zod";
-import { promises as fs } from "fs";
 import path from "path";
-import { getAllMarkdownFiles } from "../../utils/files.js";
-import { parseNote } from "../../utils/tags.js";
-import { normalizePath, safeJoinPath } from "../../utils/path.js";
+import { normalizePath } from "../../utils/path.js";
+import { getVaultIndex } from "../../utils/vault-index.js";
 import { createToolResponse } from "../../utils/responses.js";
 import { createTool } from "../../utils/tool-factory.js";
 
@@ -28,12 +26,7 @@ Examples:
 - Stats for subfolder: { "vault": "my-vault", "path": "projects" }`,
     schema,
     handler: async (args, vaultPath, _vaultName) => {
-      const normalizedVaultPath = normalizePath(vaultPath);
-      const searchDir = args.path
-        ? await safeJoinPath(normalizedVaultPath, args.path)
-        : normalizedVaultPath;
-
-      const files = await getAllMarkdownFiles(normalizedVaultPath, searchDir);
+      const notes = await getVaultIndex(vaultPath, args.path);
 
       const folderCounts = new Map<string, number>();
       const tagCounts = new Map<string, number>();
@@ -41,39 +34,27 @@ Examples:
       let totalNotes = 0;
       let notesWithFrontmatter = 0;
 
-      for (const file of files) {
-        try {
-          totalNotes++;
+      for (const note of notes) {
+        totalNotes++;
 
-          // Count by top-level folder (relative to search root)
-          const relativePath = path.relative(searchDir, file);
-          const topFolder = relativePath.split(path.sep)[0] || relativePath.split('/')[0];
-          // If file is directly in root, use "(root)"
-          const folderKey = path.dirname(relativePath) === '.' ? '(root)' : topFolder;
-          folderCounts.set(folderKey, (folderCounts.get(folderKey) || 0) + 1);
+        // Count by top-level folder
+        const parts = note.relativePath.split('/');
+        const folderKey = parts.length <= 1 ? '(root)' : parts[0];
+        folderCounts.set(folderKey, (folderCounts.get(folderKey) || 0) + 1);
 
-          const content = await fs.readFile(file, "utf-8");
-          const parsed = parseNote(content);
+        if (note.hasFrontmatter) {
+          notesWithFrontmatter++;
 
-          if (parsed.hasFrontmatter) {
-            notesWithFrontmatter++;
+          for (const key of Object.keys(note.frontmatter)) {
+            keyCounts.set(key, (keyCounts.get(key) || 0) + 1);
+          }
 
-            // Count frontmatter keys
-            for (const key of Object.keys(parsed.frontmatter)) {
-              keyCounts.set(key, (keyCounts.get(key) || 0) + 1);
-            }
-
-            // Count tags from frontmatter tags array
-            const tags = parsed.frontmatter.tags;
-            if (Array.isArray(tags)) {
-              for (const tag of tags) {
-                const tagStr = String(tag);
-                tagCounts.set(tagStr, (tagCounts.get(tagStr) || 0) + 1);
-              }
+          const tags = note.frontmatter.tags;
+          if (Array.isArray(tags)) {
+            for (const tag of tags) {
+              tagCounts.set(String(tag), (tagCounts.get(String(tag)) || 0) + 1);
             }
           }
-        } catch (error) {
-          console.error(`Skipping file ${file}: ${error instanceof Error ? error.message : String(error)}`);
         }
       }
 
