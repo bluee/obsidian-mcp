@@ -1,14 +1,6 @@
 # Obsidian MCP Server
 
-> This is a fork of [StevenStavrakis/obsidian-mcp](https://github.com/StevenStavrakis/obsidian-mcp) with the following changes:
-> - **New tools:** frontmatter queries, backlinks search, vault statistics, batch updates
-> - **Enhanced search:** regex support, frontmatter filtering, result limits, path exclusions
-> - **Enhanced read:** partial reads (frontmatter-only or content-only)
-> - **File locking:** advisory locks on all write operations to prevent concurrent edit races
-> - **Relaxed vault check:** works with any markdown folder (`.obsidian` directory no longer required)
-> - **Multi-session HTTP:** fixed one-Server-per-transport bug for Streamable HTTP mode
-> - Upstream [#31](https://github.com/StevenStavrakis/obsidian-mcp/pull/31) — Streamable HTTP transport
-> - Upstream [#32](https://github.com/StevenStavrakis/obsidian-mcp/pull/32) — Unicode vault name support
+> Originally inspired by [StevenStavrakis/obsidian-mcp](https://github.com/StevenStavrakis/obsidian-mcp). This project has since diverged significantly with new tools, a vault index, file locking, and relaxed requirements.
 
 An [MCP (Model Context Protocol)](https://modelcontextprotocol.io) server that enables AI assistants to interact with Obsidian vaults or any folder of markdown files — reading, creating, editing, searching, and managing notes and tags.
 
