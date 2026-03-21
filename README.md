@@ -1,29 +1,30 @@
-# Obsidian MCP Server
+# Markdown Vault MCP Server
 
-> Originally inspired by [StevenStavrakis/obsidian-mcp](https://github.com/StevenStavrakis/obsidian-mcp). This project has since diverged significantly with new tools, a vault index, file locking, and relaxed requirements.
+An [MCP (Model Context Protocol)](https://modelcontextprotocol.io) server that gives AI assistants full read/write access to a folder of markdown files. Works with Obsidian vaults, any PKM tool, or plain markdown folders.
 
-An [MCP (Model Context Protocol)](https://modelcontextprotocol.io) server that enables AI assistants to interact with Obsidian vaults or any folder of markdown files — reading, creating, editing, searching, and managing notes and tags.
+Query notes by frontmatter, find backlinks, search with regex, batch-update metadata, and manage tags — all through a standard MCP interface that works with Claude Desktop, claude.ai, or any MCP client.
 
-**Please backup your vault before use.** This MCP has read and write access. Git or any other backup method is recommended.
+**Please backup your files before use.** This server has read and write access. Git or any other backup method is recommended.
 
 ## Features
 
-- Read, create, edit, move, and delete notes
-- Search vault contents (full-text, tag-based, and regex)
-- Query notes by frontmatter fields (e.g. `status:open`, `priority:high`)
-- Find backlinks — discover which notes link to a target note
-- Vault statistics — tag frequency, folder distribution, frontmatter key analysis
-- Batch update frontmatter across multiple notes with dry-run preview
-- Manage tags (add, remove, rename) with file locking
-- Partial note reads (frontmatter-only or content-only)
-- Multi-vault support (up to 10 vaults)
-- HTTP server mode via Streamable HTTP transport
-- Works with any markdown folder (Obsidian not required)
+- **Read, create, edit, move, and delete** markdown notes
+- **Search** with full-text, regex, and tag queries
+- **Query frontmatter** — filter notes by YAML fields (`status:open`, `priority:high`, `date>2024-01-01`)
+- **Find backlinks** — discover which notes reference a target (wikilinks, markdown links, and plain text)
+- **Batch update** frontmatter across multiple matching notes with dry-run preview
+- **Vault statistics** — tag frequency, folder distribution, frontmatter key analysis
+- **Tag management** — add, remove, rename tags with file locking
+- **Partial reads** — get just frontmatter (as JSON) or content without frontmatter
+- **In-memory vault index** with file watching for fast repeated queries
+- **Multi-vault support** — up to 10 folders simultaneously
+- **HTTP mode** — Streamable HTTP transport with session management
+- **No Obsidian dependency** — works with any folder of `.md` files
 
 ## Requirements
 
 - Node.js 20+
-- A folder containing markdown files (Obsidian vault optional)
+- A folder containing markdown files
 
 ## Install
 
@@ -34,24 +35,31 @@ Add to your config (`~/Library/Application Support/Claude/claude_desktop_config.
 ```json
 {
     "mcpServers": {
-        "obsidian": {
+        "markdown-vault": {
             "command": "npx",
-            "args": ["-y", "obsidian-mcp", "/path/to/your/vault"]
+            "args": ["-y", "obsidian-mcp", "/path/to/your/folder"]
         }
     }
 }
 ```
 
-Multiple vaults are supported — just add more paths to the `args` array.
+Multiple folders are supported — just add more paths to the `args` array.
 
 Restart Claude Desktop after saving. The hammer icon should appear, indicating the server is connected.
 
 ### HTTP Server
 
-For web-based integrations, use the `--http` flag. See [HTTP-SERVER.md](HTTP-SERVER.md) for full details.
+For web-based integrations or remote access, use the `--http` flag. See [HTTP-SERVER.md](HTTP-SERVER.md) for full details.
 
 ```bash
-node build/main.js --http /path/to/your/vault
+node build/main.js --http /path/to/your/folder
+```
+
+### Docker
+
+```bash
+docker build -t markdown-vault-mcp .
+docker run -p 3000:3000 -v /path/to/folder:/vault markdown-vault-mcp /vault
 ```
 
 ## Available Tools
@@ -66,8 +74,8 @@ node build/main.js --http /path/to/your/vault
 | `create-directory` | Create a new directory |
 | `search-vault` | Search notes (text, regex, tags) with frontmatter filtering |
 | `query-frontmatter` | Filter notes by YAML frontmatter fields |
-| `find-backlinks` | Find all notes linking to a target note |
-| `vault-stats` | Vault analytics: note counts, tag frequency, key distribution |
+| `find-backlinks` | Find all notes referencing a target (links and plain text) |
+| `vault-stats` | Analytics: note counts, tag frequency, key distribution |
 | `batch-update` | Bulk update frontmatter across matching notes |
 | `add-tags` | Add tags to a note (with file locking) |
 | `remove-tags` | Remove tags from a note (with file locking) |
@@ -89,23 +97,31 @@ Then point Claude Desktop at your local build:
 ```json
 {
     "mcpServers": {
-        "obsidian": {
+        "markdown-vault": {
             "command": "node",
-            "args": ["<absolute-path-to-obsidian-mcp>/build/main.js", "/path/to/your/vault"]
+            "args": ["<absolute-path>/build/main.js", "/path/to/your/folder"]
         }
     }
 }
 ```
 
-Additional docs in the `docs/` directory: [creating-tools.md](docs/creating-tools.md), [tool-examples.md](docs/tool-examples.md).
+Run tests:
+
+```bash
+bun test
+```
 
 ## Troubleshooting
 
 | Issue | Fix |
 |-------|-----|
-| Server not showing in Claude Desktop | Check config syntax, ensure vault path is absolute, restart Claude Desktop |
-| Permission errors | Ensure the vault path is readable/writable |
+| Server not showing in Claude Desktop | Check config syntax, ensure path is absolute, restart Claude Desktop |
+| Permission errors | Ensure the folder path is readable/writable |
 | Tool execution failures | Check logs: `~/Library/Logs/Claude/mcp*.log` (macOS) or `%APPDATA%\Claude\logs\mcp*.log` (Windows) |
+
+## Acknowledgements
+
+Originally inspired by [StevenStavrakis/obsidian-mcp](https://github.com/StevenStavrakis/obsidian-mcp).
 
 ## License
 
