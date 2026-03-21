@@ -16,6 +16,7 @@ import { createQueryFrontmatterTool } from "./tools/query-frontmatter/index.js";
 import { createFindBacklinksTool } from "./tools/find-backlinks/index.js";
 import { createVaultStatsTool } from "./tools/vault-stats/index.js";
 import { createBatchUpdateTool } from "./tools/batch-update/index.js";
+import { createStatusTool } from "./tools/status/index.js";
 import { listVaultsPrompt } from "./prompts/list-vaults/index.js";
 import { registerPrompt } from "./utils/prompt-factory.js";
 import path from "path";
@@ -444,7 +445,8 @@ Examples:
       createQueryFrontmatterTool(vaultsMap),
       createFindBacklinksTool(vaultsMap),
       createVaultStatsTool(vaultsMap),
-      createBatchUpdateTool(vaultsMap)
+      createBatchUpdateTool(vaultsMap),
+      createStatusTool(vaultsMap)
     ];
 
     for (const tool of tools) {
